@@ -393,12 +393,16 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         int topPixel = 100000;
         int leftPixel = 100000;
         int rightPixel = -1;
+        int rightPixelY = -1;
         for(j = 0; j< img.cols; j++){
             for(i = 0; i< img.rows; i++){
                 int newPixel = outData[img.cols * i + j];
                 if(newPixel != 0){
                     if(j<leftPixel) leftPixel = j;
-                    if(j>rightPixel) rightPixel = j;
+                    if(j>rightPixel){
+                        rightPixel = j;
+                        rightPixelY = i;
+                    }
                     if(i<topPixel) topPixel = i;
                     if(i>bottomPixel) bottomPixel = i;
                 }
@@ -418,6 +422,7 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         outputs[5] = bottomPixel;
         outputs[6] = leftPixel;
         outputs[7] = rightPixel;
+        outputs[8] = rightPixelY;
         cvHelperStatus = "Detected object edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -1140,7 +1145,7 @@ ADCVStatus_t NDPluginCVHelper::get_image_stats_description(string* inputDesc, st
 ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
     int numInput = 4;
-    int numOutput = 8;
+    int numOutput = 9;
     inputDesc[0] = "Threshold Value (Int) Ex. 100";
     inputDesc[1] = "Threshold ratio (Int) Ex. 3";
     inputDesc[2] = "Blur Degree (Int) Ex. 3";
@@ -1153,6 +1158,7 @@ ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, str
     outputDesc[5] = "Bottom Pixel";
     outputDesc[6] = "Left Pixel";
     outputDesc[7] = "Right Pixel";
+    outputDesc[8] = "Y value of rightmost pixel";
     *description = "Edge detection using the 'Canny' function. First blurs the image, then thresholds, then runs the canny algorithm.";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
