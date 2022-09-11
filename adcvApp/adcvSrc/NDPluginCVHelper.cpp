@@ -369,10 +369,10 @@ ADCVStatus_t NDPluginCVHelper::sharpen_images(Mat &img, double* inputs, double* 
  * Y pixel values that appear on one of the edges. The horizontal and vertical size and center give you the spacing between
  * these min and max values and their midpoint.
  * 
- * @inCount     -> 3
+ * @inCount     -> 5
  * @inFormat    -> [Threshold value (Int), Threshold ratio (Int), Blur degree (Int), Kernel Size (Int)]
  *
- * @outCount    -> 8
+ * @outCount    -> 10
  * @outFormat   -> [Horizontal Center, Horizontal Size, Vertical Center, Vertical Size, Top Pixel, Bottom Pixel, Left Pixel, Right Pixel]
  */
 ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, double* outputs){
@@ -382,8 +382,13 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
     int threshRatio = inputs[1];
     int blurDegree = inputs[2];
     int kernelSize = inputs[3];
+    int threshValMask = inputs[4];
+    int threshValMaxMask = inputs[5];
     // If image isn't mono, we need to convert it first
     try{
+	Mat imgClone = img.clone();
+	threshold(img, imgClone, threshValMask, threshValMaxMask, THRESH_BINARY);
+	Scalar imgCloneMean = mean(imgClone);
         blur(img, img, Size(blurDegree, blurDegree));
         Canny(img, img, threshVal, (threshVal*threshRatio), kernelSize);
         // set output params
@@ -423,6 +428,7 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         outputs[6] = leftPixel;
         outputs[7] = rightPixel;
         outputs[8] = rightPixelY;
+	outputs[9] = *imgCloneMean.val;
         cvHelperStatus = "Detected object edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -1144,12 +1150,14 @@ ADCVStatus_t NDPluginCVHelper::get_image_stats_description(string* inputDesc, st
  */
 ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 4;
-    int numOutput = 9;
-    inputDesc[0] = "Threshold Value (Int) Ex. 100";
+    int numInput = 6;
+    int numOutput = 10;
+    inputDesc[0] = "Threshold Value Canny Edge (Int) Ex. 100";
     inputDesc[1] = "Threshold ratio (Int) Ex. 3";
     inputDesc[2] = "Blur Degree (Int) Ex. 3";
     inputDesc[3] = "Kernel Size (Int) Ex. 3";
+    inputDesc[4] = "Threshold Value Mask (Int)";
+    inputDesc[5] = "Threshold Max Mask (Int)";
     outputDesc[0] = "Horizontal Center";
     outputDesc[1] = "Horizontal Size";
     outputDesc[2] = "Vertical Center";
@@ -1159,6 +1167,7 @@ ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, str
     outputDesc[6] = "Left Pixel";
     outputDesc[7] = "Right Pixel";
     outputDesc[8] = "Y value of rightmost pixel";
+    outputDesc[9] = "thresholded mean";
     *description = "Edge detection using the 'Canny' function. First blurs the image, then thresholds, then runs the canny algorithm.";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
