@@ -291,10 +291,10 @@ ADCVStatus_t NDPluginCVHelper::threshold_image(Mat &img, double* inputs, double*
  * Next, the image is blurred using a gaussian kernel to emphasize edges. Then a laplacian kernel runs over
  * the images assigning a 'sharpness' value to each pixel. The sharpest values are hard edges from black to white.
  * 
- * @inCount     -> 1
+ * @inCount     -> 4
  * @inFormat    -> [Blur degree (Int)]
  * 
- * @outCount    -> 0
+ * @outCount    -> 2
  * @outFormat   -> N/A
  */
 ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs, double* outputs){
@@ -303,6 +303,7 @@ ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs
     int kernel_size = inputs[1];
     int scale = inputs[2];
     int delta = inputs[3];
+    Scalar mean, sigma;
 
     ADCVStatus_t status = cvHelperSuccess;
     try{
@@ -310,6 +311,9 @@ ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs
         int depth = img.depth();
         Laplacian(img, img, depth, kernel_size, scale, delta, BORDER_DEFAULT);
         convertScaleAbs(img, img);
+        meanStdDev(img, mean, sigma);
+	outputs[0] = *mean.val;
+	outputs[1] = *sigma.val;
         cvHelperStatus = "Detected laplacian edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -347,8 +351,7 @@ ADCVStatus_t NDPluginCVHelper::sharpen_images(Mat &img, double* inputs, double* 
         int depth = img.depth();
         Laplacian(img, img, depth, kernel_size, scale, delta, BORDER_DEFAULT );
         convertScaleAbs(img, img);
-        cvHelperStatus = "Detected laplacian edges";
-                    
+        cvHelperStatus = "Detected laplacian edges";      
         subtract(temp, img, img);
         temp.release();
 
@@ -1030,11 +1033,13 @@ ADCVStatus_t NDPluginCVHelper::get_gaussian_blur_description(string* inputDesc, 
 ADCVStatus_t NDPluginCVHelper::get_laplacian_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
     int numInput = 4;
-    int numOutput = 0;
+    int numOutput = 2;
     inputDesc[0] = "Gauss Blurr degree [int]";
     inputDesc[1] = "Laplace kernel size [int]";
     inputDesc[2] = "Laplace scale [int]";
-    inputDesc[3] = "Laplace delat [int]";
+    inputDesc[3] = "Laplace delta [int]";
+    outputDesc[0] = "Laplacian Mean";
+    outputDesc[1] = "Laplacian StdDev";
 
     *description = "Edge detection using a combination of a Gaussian Blur kernel and a Laplacian kernel";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
