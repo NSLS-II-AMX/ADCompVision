@@ -391,7 +391,7 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
     try{
 	Mat imgClone = img.clone();
 	threshold(img, imgClone, threshValMask, threshValMaxMask, THRESH_BINARY);
-	Scalar imgCloneMean = mean(imgClone);
+	Scalar imgCloneSum = sum(imgClone);
         blur(img, img, Size(blurDegree, blurDegree));
         Canny(img, img, threshVal, (threshVal*threshRatio), kernelSize);
         // set output params
@@ -431,7 +431,7 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         outputs[6] = leftPixel;
         outputs[7] = rightPixel;
         outputs[8] = rightPixelY;
-	outputs[9] = *imgCloneMean.val;
+	outputs[9] = *imgCloneSum.val;
         cvHelperStatus = "Detected object edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -1172,7 +1172,7 @@ ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, str
     outputDesc[6] = "Left Pixel";
     outputDesc[7] = "Right Pixel";
     outputDesc[8] = "Y value of rightmost pixel";
-    outputDesc[9] = "thresholded mean";
+    outputDesc[9] = "thresholded sum";
     *description = "Edge detection using the 'Canny' function. First blurs the image, then thresholds, then runs the canny algorithm.";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
