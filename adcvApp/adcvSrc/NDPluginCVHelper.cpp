@@ -807,12 +807,34 @@ ADCVStatus_t NDPluginCVHelper::obj_identification(Mat &img, double* inputs, doub
 ADCVStatus_t NDPluginCVHelper::user_function(Mat &img, double* inputs, double* outputs){
     const char* functionName = "user_function";
     ADCVStatus_t status = cvHelperSuccess;
+    int threshVal = inputs[0];
+    int threshRatio = inputs[1];
+    int blurDegree = inputs[2];
+    int kernelSize = inputs[3];
     try{
-        // Process your image here
+	Mat cannyResult = img.clone();
+        blur(img, img, Size(blurDegree, blurDegree));
+        Canny(img, cannyResult, threshVal, (threshVal*threshRatio), kernelSize);
+	vector<vector<Point>> contours;
+	findContours(cannyResult, contours, RETR_TREE, CHAIN_APPROX_NONE);
+        // set output params
+        // unsigned char* outData = (unsigned char *)img.data;
+	int minx = 100000;
+	int minxy = 100000;
+	for(unsigned long int i = 0; i < contours.size(); i++){
+	    for(unsigned long int j = 0; j < contours[i].size(); j++){
+	        if(contours[i][j].x < minx){
+		    minx = contours[i][j].x;
+	            minxy = contours[i][j].y;
+		}
+	    }
+	}
+	outputs[0] = minx;
+	outputs[1] = minxy;
         cvHelperStatus = "Finished processing user defined function";
     }catch(Exception &e){
-        print_cv_error(e, functionName);
         status = cvHelperError;
+        print_cv_error(e, functionName);
     }
     return status;
 }
@@ -1283,8 +1305,14 @@ ADCVStatus_t NDPluginCVHelper::get_obj_identification_description(string* inputD
  */
 ADCVStatus_t NDPluginCVHelper::get_user_function_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 0;
-    int numOutput = 0;
+    int numInput = 4;
+    int numOutput = 2;
+    inputDesc[0] = "Thresh val";
+    inputDesc[1] = "Thresh ratio";
+    inputDesc[2] = "blur degree";
+    inputDesc[3] = "kernel size";
+    outputDesc[0] = "min x pixel";
+    outputDesc[1] = "y pixel of minx";
     *description = "Describe what your function does here";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
