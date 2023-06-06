@@ -389,9 +389,9 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
     int threshValMaxMask = inputs[5];
     // If image isn't mono, we need to convert it first
     try{
-	Mat imgClone = img.clone();
-	threshold(img, imgClone, threshValMask, threshValMaxMask, THRESH_BINARY);
-	Scalar imgCloneSum = sum(imgClone);
+	Mat thresh;
+	threshold(img, thresh, threshValMask, threshValMaxMask, THRESH_BINARY);
+	double imgCloneSum = sum(thresh)[0];
         blur(img, img, Size(blurDegree, blurDegree));
         Canny(img, img, threshVal, (threshVal*threshRatio), kernelSize);
         // set output params
@@ -431,7 +431,7 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         outputs[6] = leftPixel;
         outputs[7] = rightPixel;
         outputs[8] = rightPixelY;
-	outputs[9] = *imgCloneSum.val;
+	    outputs[9] = imgCloneSum;
         cvHelperStatus = "Detected object edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
