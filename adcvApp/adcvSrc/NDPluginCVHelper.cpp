@@ -811,6 +811,11 @@ ADCVStatus_t NDPluginCVHelper::user_function(Mat &img, double* inputs, double* o
     int threshRatio = inputs[1];
     int blurDegree = inputs[2];
     int kernelSize = inputs[3];
+    int maxAllowedGap = inputs[4]; // maximum size gap allowed
+    int excessPixels = inputs[5];
+    int topEdge = -1;
+    int bottomEdge = -1;
+
     try{
 	Mat cannyResult = img.clone();
         blur(img, img, Size(blurDegree, blurDegree));
@@ -829,9 +834,70 @@ ADCVStatus_t NDPluginCVHelper::user_function(Mat &img, double* inputs, double* o
 		}
 	    }
 	}
-	outputs[0] = minx;
-	outputs[1] = minxy;
+
+        // Find the column with the maximum height gap and minimum height gap
+        int maxGap = -1;
+        int minGap = 10000;
+        int columnWithMaxGap = 0;
+        int columnWithMinGap = 0;
+	int maxGapTop = -1;
+	int maxGapBottom = -1;
+	int minGapTop = -1;
+	int minGapBottom = -1;
+
+        for (int col = 0; col < img.cols; col++) {
+            topEdge = -1;
+            bottomEdge = -1;
+
+            for (const auto& contour : contours) {
+                for (const Point& point : contour) {
+                    int x = point.x;
+                    int y = point.y;
+                    if (x == col) {
+                        if (topEdge == -1 || y < topEdge) {
+                            topEdge = y;
+                        }
+                        if (bottomEdge == -1 || y > bottomEdge) {
+                            bottomEdge = y;
+                        }
+                    }
+                }
+            }
+
+            if (topEdge != -1 && bottomEdge != -1) {
+                int gap = bottomEdge - topEdge;
+                if (gap > maxGap && gap < maxAllowedGap && gap < (maxGap + excessPixels)) {
+                    maxGap = gap;
+                    columnWithMaxGap = col;
+		    maxGapTop = topEdge;
+		    maxGapBottom = bottomEdge;
+                }
+                if (gap < minGap && col > columnWithMaxGap) {  // Add the constraint
+                    minGap = gap;
+                    columnWithMinGap = col;
+		    minGapTop = topEdge;
+		    minGapBottom = bottomEdge;
+                }
+            }
+        }
+
+        // Calculate the center positions for both columns
+        int centerXMaxGap = columnWithMaxGap;
+        int centerYMaxGap = (maxGapTop + maxGapBottom) / 2;
+
+        int centerXMinGap = columnWithMinGap;
+        int centerYMinGap = (minGapTop + minGapBottom) / 2;
+
+        // Set the output parameters with the results
+        outputs[0] = minx;   // Original minx
+        outputs[1] = minxy;  // Original minxy
+        outputs[2] = centerXMaxGap;
+        outputs[3] = centerYMaxGap;
+        outputs[4] = centerXMinGap;
+        outputs[5] = centerYMinGap;
+
         cvHelperStatus = "Finished processing user defined function";
+
     }catch(Exception &e){
         status = cvHelperError;
         print_cv_error(e, functionName);
@@ -1305,14 +1371,21 @@ ADCVStatus_t NDPluginCVHelper::get_obj_identification_description(string* inputD
  */
 ADCVStatus_t NDPluginCVHelper::get_user_function_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 4;
-    int numOutput = 2;
+    int numInput = 6;
+    int numOutput = 6;
     inputDesc[0] = "Thresh val";
     inputDesc[1] = "Thresh ratio";
     inputDesc[2] = "blur degree";
     inputDesc[3] = "kernel size";
-    outputDesc[0] = "min x pixel";
-    outputDesc[1] = "y pixel of minx";
+    inputDesc[4] = "max allowed gap (px)";
+    inputDesc[5] = "excess pixels for resetting max gap";
+    outputDesc[0] = "left edge x pixel";
+    outputDesc[1] = "left edge y pixel";
+    outputDesc[2] = "high gap col";
+    outputDesc[3] = "high gap center";
+    outputDesc[4] = "low gap col";
+    outputDesc[5] = "low gap center";
+
     *description = "Describe what your function does here";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
