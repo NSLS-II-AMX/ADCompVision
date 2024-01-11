@@ -272,11 +272,34 @@ ADCVStatus_t NDPluginCVHelper::gaussian_blur(Mat &img, double* inputs, double* o
 ADCVStatus_t NDPluginCVHelper::threshold_image(Mat &img, double* inputs, double* outputs){
     const char* functionName = "threshold_image";
     ADCVStatus_t status = cvHelperSuccess;
-    int threshVal = (int) inputs[0];
-    int threshMax = (int) inputs[1];
+    int threshMax = (int) inputs[0];
+    int xmin = (int) inputs[1];
+    int xmax = (int) inputs[2];
+    int ymin = (int) inputs[3];
+    int ymax = (int) inputs[4];
+
     try{
-        threshold(img, img, threshVal, threshMax, THRESH_BINARY);
+        threshold(img, img, 0, threshMax, THRESH_BINARY_INV | THRESH_OTSU);
         cvHelperStatus = "Computed image threshold";
+
+	int h_min = -1;
+	int h_max = -1;
+
+	for (int i = ymin; i < ymax; ++i) {
+	    for (int j = xmin; j < xmax; ++j) {
+                if (img.at<uchar>(i,j) > 0){
+		    if (i > h_max){
+                        h_max = i;
+		    }
+		    if (i < h_min || h_min == -1){
+			h_min = i;
+		    }
+		    }
+	    }
+	}
+
+        outputs[0] = h_min;
+        outputs[1] = h_max;
     }catch(Exception &e){
         status = cvHelperError;
         print_cv_error(e, functionName);
@@ -1081,10 +1104,15 @@ void NDPluginCVHelper::populate_remaining_descriptions(string* inputDesc, string
  */
 ADCVStatus_t NDPluginCVHelper::get_threshold_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 2;
-    int numOutput = 0;
-    inputDesc[0] = "Threshold Value (Int)";
-    inputDesc[1] = "Max Pixel Value (Int)";
+    int numInput = 5;
+    int numOutput = 2;
+    inputDesc[0] = "Max Pixel Value (Int)";
+    inputDesc[1] = "x_min (Int)";
+    inputDesc[2] = "x_max (Int)";
+    inputDesc[3] = "y_min (Int)";
+    inputDesc[4] = "y_max (Int)";
+    outputDesc[0] = "h_min (Int)";
+    outputDesc[1] = "h_max (Int)";
     *description = "Will create binary image with cutoff at Threshold Val";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
