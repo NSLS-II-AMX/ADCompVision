@@ -11,6 +11,7 @@ include $(TOP)/configure/CONFIG
 DB+=NDCV.template
 DB+=NDCV_settings.req
 
+
 include $(TOP)/configure/RULES
 
 #add rules here

@@ -272,11 +272,34 @@ ADCVStatus_t NDPluginCVHelper::gaussian_blur(Mat &img, double* inputs, double* o
 ADCVStatus_t NDPluginCVHelper::threshold_image(Mat &img, double* inputs, double* outputs){
     const char* functionName = "threshold_image";
     ADCVStatus_t status = cvHelperSuccess;
-    int threshVal = (int) inputs[0];
-    int threshMax = (int) inputs[1];
+    int threshMax = (int) inputs[0];
+    int xmin = (int) inputs[1];
+    int xmax = (int) inputs[2];
+    int ymin = (int) inputs[3];
+    int ymax = (int) inputs[4];
+
     try{
-        threshold(img, img, threshVal, threshMax, THRESH_BINARY);
+        threshold(img, img, 0, threshMax, THRESH_BINARY_INV | THRESH_OTSU);
         cvHelperStatus = "Computed image threshold";
+
+	int h_min = -1;
+	int h_max = -1;
+
+	for (int i = ymin; i < ymax; ++i) {
+	    for (int j = xmin; j < xmax; ++j) {
+                if (img.at<uchar>(i,j) > 0){
+		    if (i > h_max){
+                        h_max = i;
+		    }
+		    if (i < h_min || h_min == -1){
+			h_min = i;
+		    }
+		    }
+	    }
+	}
+
+        outputs[0] = h_min;
+        outputs[1] = h_max;
     }catch(Exception &e){
         status = cvHelperError;
         print_cv_error(e, functionName);
@@ -291,10 +314,10 @@ ADCVStatus_t NDPluginCVHelper::threshold_image(Mat &img, double* inputs, double*
  * Next, the image is blurred using a gaussian kernel to emphasize edges. Then a laplacian kernel runs over
  * the images assigning a 'sharpness' value to each pixel. The sharpest values are hard edges from black to white.
  * 
- * @inCount     -> 1
+ * @inCount     -> 4
  * @inFormat    -> [Blur degree (Int)]
  * 
- * @outCount    -> 0
+ * @outCount    -> 2
  * @outFormat   -> N/A
  */
 ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs, double* outputs){
@@ -303,6 +326,7 @@ ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs
     int kernel_size = inputs[1];
     int scale = inputs[2];
     int delta = inputs[3];
+    Scalar mean, sigma;
 
     ADCVStatus_t status = cvHelperSuccess;
     try{
@@ -310,6 +334,9 @@ ADCVStatus_t NDPluginCVHelper::laplacian_edge_detection(Mat &img, double* inputs
         int depth = img.depth();
         Laplacian(img, img, depth, kernel_size, scale, delta, BORDER_DEFAULT);
         convertScaleAbs(img, img);
+        meanStdDev(img, mean, sigma);
+	outputs[0] = *mean.val;
+	outputs[1] = *sigma.val;
         cvHelperStatus = "Detected laplacian edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -347,8 +374,7 @@ ADCVStatus_t NDPluginCVHelper::sharpen_images(Mat &img, double* inputs, double* 
         int depth = img.depth();
         Laplacian(img, img, depth, kernel_size, scale, delta, BORDER_DEFAULT );
         convertScaleAbs(img, img);
-        cvHelperStatus = "Detected laplacian edges";
-                    
+        cvHelperStatus = "Detected laplacian edges";      
         subtract(temp, img, img);
         temp.release();
 
@@ -369,10 +395,10 @@ ADCVStatus_t NDPluginCVHelper::sharpen_images(Mat &img, double* inputs, double* 
  * Y pixel values that appear on one of the edges. The horizontal and vertical size and center give you the spacing between
  * these min and max values and their midpoint.
  * 
- * @inCount     -> 3
+ * @inCount     -> 5
  * @inFormat    -> [Threshold value (Int), Threshold ratio (Int), Blur degree (Int), Kernel Size (Int)]
  *
- * @outCount    -> 8
+ * @outCount    -> 10
  * @outFormat   -> [Horizontal Center, Horizontal Size, Vertical Center, Vertical Size, Top Pixel, Bottom Pixel, Left Pixel, Right Pixel]
  */
 ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, double* outputs){
@@ -382,8 +408,13 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
     int threshRatio = inputs[1];
     int blurDegree = inputs[2];
     int kernelSize = inputs[3];
+    int threshValMask = inputs[4];
+    int threshValMaxMask = inputs[5];
     // If image isn't mono, we need to convert it first
     try{
+	Mat thresh;
+	threshold(img, thresh, threshValMask, threshValMaxMask, THRESH_BINARY);
+	double imgCloneSum = sum(thresh)[0];
         blur(img, img, Size(blurDegree, blurDegree));
         Canny(img, img, threshVal, (threshVal*threshRatio), kernelSize);
         // set output params
@@ -393,12 +424,16 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         int topPixel = 100000;
         int leftPixel = 100000;
         int rightPixel = -1;
+        int rightPixelY = -1;
         for(j = 0; j< img.cols; j++){
             for(i = 0; i< img.rows; i++){
                 int newPixel = outData[img.cols * i + j];
                 if(newPixel != 0){
                     if(j<leftPixel) leftPixel = j;
-                    if(j>rightPixel) rightPixel = j;
+                    if(j>rightPixel){
+                        rightPixel = j;
+                        rightPixelY = i;
+                    }
                     if(i<topPixel) topPixel = i;
                     if(i>bottomPixel) bottomPixel = i;
                 }
@@ -418,6 +453,8 @@ ADCVStatus_t NDPluginCVHelper::canny_edge_detection(Mat &img, double* inputs, do
         outputs[5] = bottomPixel;
         outputs[6] = leftPixel;
         outputs[7] = rightPixel;
+        outputs[8] = rightPixelY;
+	    outputs[9] = imgCloneSum;
         cvHelperStatus = "Detected object edges";
     }catch(Exception &e){
         print_cv_error(e, functionName);
@@ -793,12 +830,100 @@ ADCVStatus_t NDPluginCVHelper::obj_identification(Mat &img, double* inputs, doub
 ADCVStatus_t NDPluginCVHelper::user_function(Mat &img, double* inputs, double* outputs){
     const char* functionName = "user_function";
     ADCVStatus_t status = cvHelperSuccess;
+    int threshVal = inputs[0];
+    int threshRatio = inputs[1];
+    int blurDegree = inputs[2];
+    int kernelSize = inputs[3];
+    int maxAllowedGap = inputs[4]; // maximum size gap allowed
+    int excessPixels = inputs[5];
+    int topEdge = -1;
+    int bottomEdge = -1;
+
     try{
-        // Process your image here
+	Mat cannyResult = img.clone();
+        blur(img, img, Size(blurDegree, blurDegree));
+        Canny(img, cannyResult, threshVal, (threshVal*threshRatio), kernelSize);
+	vector<vector<Point>> contours;
+	findContours(cannyResult, contours, RETR_TREE, CHAIN_APPROX_NONE);
+        // set output params
+        // unsigned char* outData = (unsigned char *)img.data;
+	int minx = 100000;
+	int minxy = 100000;
+	for(unsigned long int i = 0; i < contours.size(); i++){
+	    for(unsigned long int j = 0; j < contours[i].size(); j++){
+	        if(contours[i][j].x < minx){
+		    minx = contours[i][j].x;
+	            minxy = contours[i][j].y;
+		}
+	    }
+	}
+
+        // Find the column with the maximum height gap and minimum height gap
+        int maxGap = -1;
+        int minGap = 10000;
+        int columnWithMaxGap = 0;
+        int columnWithMinGap = 0;
+	int maxGapTop = -1;
+	int maxGapBottom = -1;
+	int minGapTop = -1;
+	int minGapBottom = -1;
+
+        for (int col = 0; col < img.cols; col++) {
+            topEdge = -1;
+            bottomEdge = -1;
+
+            for (const auto& contour : contours) {
+                for (const Point& point : contour) {
+                    int x = point.x;
+                    int y = point.y;
+                    if (x == col) {
+                        if (topEdge == -1 || y < topEdge) {
+                            topEdge = y;
+                        }
+                        if (bottomEdge == -1 || y > bottomEdge) {
+                            bottomEdge = y;
+                        }
+                    }
+                }
+            }
+
+            if (topEdge != -1 && bottomEdge != -1) {
+                int gap = bottomEdge - topEdge;
+                if (gap > maxGap && gap < maxAllowedGap && gap < (maxGap + excessPixels)) {
+                    maxGap = gap;
+                    columnWithMaxGap = col;
+		    maxGapTop = topEdge;
+		    maxGapBottom = bottomEdge;
+                }
+                if (gap < minGap && col > columnWithMaxGap) {  // Add the constraint
+                    minGap = gap;
+                    columnWithMinGap = col;
+		    minGapTop = topEdge;
+		    minGapBottom = bottomEdge;
+                }
+            }
+        }
+
+        // Calculate the center positions for both columns
+        int centerXMaxGap = columnWithMaxGap;
+        int centerYMaxGap = (maxGapTop + maxGapBottom) / 2;
+
+        int centerXMinGap = columnWithMinGap;
+        int centerYMinGap = (minGapTop + minGapBottom) / 2;
+
+        // Set the output parameters with the results
+        outputs[0] = minx;   // Original minx
+        outputs[1] = minxy;  // Original minxy
+        outputs[2] = centerXMaxGap;
+        outputs[3] = centerYMaxGap;
+        outputs[4] = centerXMinGap;
+        outputs[5] = centerYMinGap;
+
         cvHelperStatus = "Finished processing user defined function";
+
     }catch(Exception &e){
-        print_cv_error(e, functionName);
         status = cvHelperError;
+        print_cv_error(e, functionName);
     }
     return status;
 }
@@ -979,10 +1104,15 @@ void NDPluginCVHelper::populate_remaining_descriptions(string* inputDesc, string
  */
 ADCVStatus_t NDPluginCVHelper::get_threshold_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 2;
-    int numOutput = 0;
-    inputDesc[0] = "Threshold Value (Int)";
-    inputDesc[1] = "Max Pixel Value (Int)";
+    int numInput = 5;
+    int numOutput = 2;
+    inputDesc[0] = "Max Pixel Value (Int)";
+    inputDesc[1] = "x_min (Int)";
+    inputDesc[2] = "x_max (Int)";
+    inputDesc[3] = "y_min (Int)";
+    inputDesc[4] = "y_max (Int)";
+    outputDesc[0] = "h_min (Int)";
+    outputDesc[1] = "h_max (Int)";
     *description = "Will create binary image with cutoff at Threshold Val";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
@@ -1019,11 +1149,13 @@ ADCVStatus_t NDPluginCVHelper::get_gaussian_blur_description(string* inputDesc, 
 ADCVStatus_t NDPluginCVHelper::get_laplacian_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
     int numInput = 4;
-    int numOutput = 0;
+    int numOutput = 2;
     inputDesc[0] = "Gauss Blurr degree [int]";
     inputDesc[1] = "Laplace kernel size [int]";
     inputDesc[2] = "Laplace scale [int]";
-    inputDesc[3] = "Laplace delat [int]";
+    inputDesc[3] = "Laplace delta [int]";
+    outputDesc[0] = "Laplacian Mean";
+    outputDesc[1] = "Laplacian StdDev";
 
     *description = "Edge detection using a combination of a Gaussian Blur kernel and a Laplacian kernel";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
@@ -1139,12 +1271,14 @@ ADCVStatus_t NDPluginCVHelper::get_image_stats_description(string* inputDesc, st
  */
 ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 4;
-    int numOutput = 8;
-    inputDesc[0] = "Threshold Value (Int) Ex. 100";
+    int numInput = 6;
+    int numOutput = 10;
+    inputDesc[0] = "Threshold Value Canny Edge (Int) Ex. 100";
     inputDesc[1] = "Threshold ratio (Int) Ex. 3";
     inputDesc[2] = "Blur Degree (Int) Ex. 3";
     inputDesc[3] = "Kernel Size (Int) Ex. 3";
+    inputDesc[4] = "Threshold Value Mask (Int)";
+    inputDesc[5] = "Threshold Max Mask (Int)";
     outputDesc[0] = "Horizontal Center";
     outputDesc[1] = "Horizontal Size";
     outputDesc[2] = "Vertical Center";
@@ -1153,6 +1287,8 @@ ADCVStatus_t NDPluginCVHelper::get_canny_edge_description(string* inputDesc, str
     outputDesc[5] = "Bottom Pixel";
     outputDesc[6] = "Left Pixel";
     outputDesc[7] = "Right Pixel";
+    outputDesc[8] = "Y value of rightmost pixel";
+    outputDesc[9] = "thresholded sum";
     *description = "Edge detection using the 'Canny' function. First blurs the image, then thresholds, then runs the canny algorithm.";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
@@ -1263,8 +1399,21 @@ ADCVStatus_t NDPluginCVHelper::get_obj_identification_description(string* inputD
  */
 ADCVStatus_t NDPluginCVHelper::get_user_function_description(string* inputDesc, string* outputDesc, string* description){
     ADCVStatus_t status = cvHelperSuccess;
-    int numInput = 0;
-    int numOutput = 0;
+    int numInput = 6;
+    int numOutput = 6;
+    inputDesc[0] = "Thresh val";
+    inputDesc[1] = "Thresh ratio";
+    inputDesc[2] = "blur degree";
+    inputDesc[3] = "kernel size";
+    inputDesc[4] = "max allowed gap (px)";
+    inputDesc[5] = "excess pixels for resetting max gap";
+    outputDesc[0] = "left edge x pixel";
+    outputDesc[1] = "left edge y pixel";
+    outputDesc[2] = "high gap col";
+    outputDesc[3] = "high gap center";
+    outputDesc[4] = "low gap col";
+    outputDesc[5] = "low gap center";
+
     *description = "Describe what your function does here";
     populate_remaining_descriptions(inputDesc, outputDesc, numInput, numOutput);
     return status;
