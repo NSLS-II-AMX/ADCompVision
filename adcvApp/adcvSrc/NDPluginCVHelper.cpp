@@ -853,9 +853,26 @@ ADCVStatus_t NDPluginCVHelper::user_function(Mat &img, double* inputs, double* o
 	    for(unsigned long int j = 0; j < contours[i].size(); j++){
 	        if(contours[i][j].x < minx){
 		    minx = contours[i][j].x;
-	            minxy = contours[i][j].y;
 		}
 	    }
+	}
+	std::vector<int> y_values;
+	for(unsigned long int i = 0; i < contours.size(); i++){
+	    for(unsigned long int j = 0; j < contours[i].size(); j++){
+	        if(contours[i][j].x == minx){
+		    y_values.push_back(contours[i][j].y);
+		}
+	    }
+	}
+
+	// calculate median_y of tip (x = x_min)
+	std::sort(y_values.begin(), y_values.end());
+	size_t size = y_values.size();
+	if (size % 2 == 0) {
+	    minxy = (y_values[size / 2 - 1] + y_values[size / 2]) / 2;
+	}
+	else {
+	    minxy = y_values[size / 2];
 	}
 
         // Find the column with the maximum height gap and minimum height gap
